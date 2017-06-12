@@ -17,6 +17,10 @@ import org.apache.log4j.Level
 
 object LogRegClassifier {
 
+  /*def rowToString(row: Row) : String = {
+
+  }*/
+
   def main(args: Array[String]): Unit = {
 
     //reduce verbosity of logger
@@ -42,7 +46,7 @@ object LogRegClassifier {
         current = next
       }
       else {
-        val tweet = current.get(6) + next.toString()
+        val tweet = current.get(6) + next.toSeq.filterNot(_ == null).mkString("")
         val row = List(current.get(0), current.get(1), current.get(2), current.get(3),
         current.get(4), current.get(5), tweet)
         current = Row.fromSeq(row)
@@ -53,7 +57,10 @@ object LogRegClassifier {
     val cleanDF = spark.createDataFrame(rdd, df.schema)
     //rdd.collect().take(100).foreach(println(_))
 
-   cleanDF.show(100)
-
+   cleanDF.select("tweet").collect().take(100).foreach(println(_))
+   /* df.createTempView("data")
+    val x = spark.sql("SELECT * FROM data WHERE count = null")
+    println(x)
+*/
   }
 }

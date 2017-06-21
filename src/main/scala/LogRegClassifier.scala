@@ -4,17 +4,14 @@
 
 import java.util
 
-import scala.util.matching.Regex
 import scala.collection.JavaConversions._
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, DataFrameReader, Row, SQLContext}
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml.feature.{RegexTokenizer, StopWordsRemover}
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
-import org.apache.spark.SparkContext
 
 object LogRegClassifier {
 
@@ -37,13 +34,12 @@ object LogRegClassifier {
     val spark = SparkSession.builder.master("local[*]")
       .appName("Example").getOrCreate()
 
-    import spark.implicits._
-
     //read file, convert to lowercase, split fields, drop header line
     val rdd = spark.sparkContext.textFile(data).filter(!_.isEmpty).map(s => s.toLowerCase)
       .map(s => s.split(",", 7).toSeq).map(s => toInt(s)).map(s => Row.fromSeq(s))
       .mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else iter }
 
+    //restore truncated lines
     val iter = rdd.toLocalIterator
     var current = iter.next()
     val list: util.List[Row] = new util.ArrayList[Row]()
@@ -51,7 +47,7 @@ object LogRegClassifier {
     while (iter.hasNext) {
       val next = iter.next()
       if (next.size < 7) {
-        val tweet = current.get(6) + next.toSeq.filterNot(_ == null).mkString("")
+        val tweet = current.get(6) + " " + next.toSeq.filterNot(_ == null).mkString("")
         val row = List(current.get(0), current.get(1), current.get(2), current.get(3),
           current.get(4), current.get(5), tweet)
         current = Row.fromSeq(row)
@@ -63,6 +59,7 @@ object LogRegClassifier {
     }
     val restoredRdd = spark.sparkContext.parallelize(list)
 
+    //schema for the dataframe
     val schema = new StructType(Array(StructField("id", IntegerType, nullable = false)
       , StructField("count", IntegerType, nullable = false)
       , StructField("hate_speech", IntegerType, nullable = false)
@@ -73,32 +70,25 @@ object LogRegClassifier {
     ))
 
     var df = spark.createDataFrame(restoredRdd, schema)
-    df.printSchema()
-    df.show(50)
 
     //replace URLs and Mentions with general tags
-   val urlPattern = "[\"]?http[s]?[^\\s | \" | ;]*"
-    // val mentionPattern = "@[^\\s|]*"
+    val urlPattern = "[\"]?http[s]?[^\\s | \" | ;]*"
+    val mentionPattern = "@[^\\s|]*"
 
-     df = df.withColumn("tweet", regexp_replace(df("tweet"), urlPattern, "URL_TAG"))
-     //df = df.withColumn("tweet", regexp_replace(df("tweet"), mentionPattern, "MENTION_TAG"))
-     df.select("tweet").collect().take(130).foreach(println(_))
-     // df.printSchema()
+    df = df.withColumn("tweet", regexp_replace(df("tweet"), urlPattern, "URL_TAG"))
+    df = df.withColumn("tweet", regexp_replace(df("tweet"), mentionPattern, "MENTION_TAG"))
 
-
-    /*
-    //tokenize tweets
+    //tokenize tweets, split at nonword character except & and #
     val tokenizer = new RegexTokenizer().setInputCol("tweet").setOutputCol("tokens")
-      .setPattern("\\W")
+      .setPattern("[^\\w&#]").setToLowercase(false)
     df = tokenizer.transform(df)
 
-    //remove stopwords
+   //remove stopwords
     val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("filtered")
-    df = remover.transform(df) //TODO: regex anpassen: hashtags und smilies sollen komplett bleiben
-
-    df.select("filtered").collect().take(100).foreach(println(_))
+    val stopwords = remover.getStopWords ++ Array[String]("rt", "ff", "#ff")
+    remover.setStopWords(stopwords)
+    df = remover.transform(df)
 
     //TODO: save to csv file, rename class
-*/
   }
 }

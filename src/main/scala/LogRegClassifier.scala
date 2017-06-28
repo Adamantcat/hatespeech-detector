@@ -3,6 +3,7 @@
   */
 
 import java.util
+import java.io._
 
 import scala.collection.JavaConversions._
 import org.apache.spark.sql.Row
@@ -83,12 +84,21 @@ object LogRegClassifier {
       .setPattern("[^\\w&#]").setToLowercase(false)
     df = tokenizer.transform(df)
 
-   //remove stopwords
+    //remove stopwords
     val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("filtered")
     val stopwords = remover.getStopWords ++ Array[String]("rt", "ff", "#ff")
     remover.setStopWords(stopwords)
     df = remover.transform(df)
 
-    //TODO: save to csv file, rename class
+    //TODO: save to file, rename class
+    // df.rdd.saveAsObjectFile("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data.bin")
+    // val rdd1 = spark.sparkContext.objectFile("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data.bin")
+
+    //df.select("filtered").take(100).foreach(println(_))
+     df.write.mode("overwrite").format("json").save("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data")
+
+     val test = spark.read.json("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data")
+     test.show
+
   }
 }

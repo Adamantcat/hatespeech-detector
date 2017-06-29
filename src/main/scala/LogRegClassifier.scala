@@ -17,11 +17,19 @@ import org.apache.log4j.Level
 object LogRegClassifier {
 
   //method ro convert numerical fields of sequence[String] to Integer
+  /*
   def toInt(seq: Seq[String]): Seq[Any] = {
-    seq.map(s => s match {
-      case _ if s.matches("[0-9]+") => s.toInt
+       seq.map(s => s match {
+      case _ if s.trim.matches("[0-9]+") => s.toInt
       case _ => s
     })
+  }
+  */
+
+  def toInt(seq: Seq[String]): Seq[Any] = {
+    val tail = seq.last
+    val intSeq = seq.slice(0, 6).map(s => s.trim.toInt)
+    return intSeq :+ tail
   }
 
   def main(args: Array[String]): Unit = {
@@ -30,35 +38,36 @@ object LogRegClassifier {
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
 
-    val data = "C:\\Users\\Julia\\Documents\\BA-Thesis\\labeled_data.csv"
+    val data = "/home/kratzbaum/Dokumente/labeled_data.csv"
 
     val spark = SparkSession.builder.master("local[*]")
       .appName("Example").getOrCreate()
 
-    //read file, convert to lowercase, split fields, drop header line
     val rdd = spark.sparkContext.textFile(data).filter(!_.isEmpty).map(s => s.toLowerCase)
-      .map(s => s.split(",", 7).toSeq).map(s => toInt(s)).map(s => Row.fromSeq(s))
-      .mapPartitionsWithIndex { (idx, iter) => if (idx == 0) iter.drop(1) else iter }
+      .map(s => s.split(",", 7).toSeq)
 
     //restore truncated lines
     val iter = rdd.toLocalIterator
     var current = iter.next()
-    val list: util.List[Row] = new util.ArrayList[Row]()
+    val list: util.List[Seq[String]] = new util.ArrayList[Seq[String]]()
 
     while (iter.hasNext) {
       val next = iter.next()
-      if (next.size < 7) {
-        val tweet = current.get(6) + " " + next.toSeq.filterNot(_ == null).mkString("")
+      if (next.size != 7) {
+        val tweet = current.get(6) + " " + next.filterNot(_ == null).mkString("")
         val row = List(current.get(0), current.get(1), current.get(2), current.get(3),
           current.get(4), current.get(5), tweet)
-        current = Row.fromSeq(row)
+        current = row
       }
       else {
         list.add(current)
         current = next
       }
     }
-    val restoredRdd = spark.sparkContext.parallelize(list)
+
+    val rows = list.tail.map(s => Row.fromSeq(toInt(s)))
+    val restoredRDD = spark.sparkContext.parallelize(rows)
+
 
     //schema for the dataframe
     val schema = new StructType(Array(StructField("id", IntegerType, nullable = false)
@@ -70,7 +79,8 @@ object LogRegClassifier {
       , StructField("tweet", StringType, nullable = false)
     ))
 
-    var df = spark.createDataFrame(restoredRdd, schema)
+    var df = spark.createDataFrame(restoredRDD, schema)
+
 
     //replace URLs and Mentions with general tags
     val urlPattern = "[\"]?http[s]?[^\\s | \" | ;]*"
@@ -90,15 +100,14 @@ object LogRegClassifier {
     remover.setStopWords(stopwords)
     df = remover.transform(df)
 
+
+    //df.select("id","tweet").collect().take(200).foreach(println(_))
+
     //TODO: save to file, rename class
-    // df.rdd.saveAsObjectFile("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data.bin")
-    // val rdd1 = spark.sparkContext.objectFile("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data.bin")
+    df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
 
-    //df.select("filtered").take(100).foreach(println(_))
-     df.write.mode("overwrite").format("json").save("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data")
-
-     val test = spark.read.json("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data")
-     test.show
+   val test = spark.read.json("/home/kratzbaum/Dokumente/clean_data")
+   test.show
 
   }
 }

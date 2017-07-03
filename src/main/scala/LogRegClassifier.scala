@@ -3,7 +3,6 @@
   */
 
 import java.util
-import java.io._
 
 import scala.collection.JavaConversions._
 import org.apache.spark.sql.Row
@@ -16,20 +15,11 @@ import org.apache.log4j.Level
 
 object LogRegClassifier {
 
-  //method ro convert numerical fields of sequence[String] to Integer
-  /*
+  //convert first 6 fields of Sequence to integer
   def toInt(seq: Seq[String]): Seq[Any] = {
-       seq.map(s => s match {
-      case _ if s.trim.matches("[0-9]+") => s.toInt
-      case _ => s
-    })
-  }
-  */
-
-  def toInt(seq: Seq[String]): Seq[Any] = {
-    val tail = seq.last
+    val last = seq.last
     val intSeq = seq.slice(0, 6).map(s => s.trim.toInt)
-    return intSeq :+ tail
+    return intSeq :+ last
   }
 
   def main(args: Array[String]): Unit = {
@@ -46,28 +36,29 @@ object LogRegClassifier {
     val rdd = spark.sparkContext.textFile(data).filter(!_.isEmpty).map(s => s.toLowerCase)
       .map(s => s.split(",", 7).toSeq)
 
+    println(rdd.count())
+
     //restore truncated lines
     val iter = rdd.toLocalIterator
-    var current = iter.next()
+    var current, next = iter.next()
     val list: util.List[Seq[String]] = new util.ArrayList[Seq[String]]()
 
-    while (iter.hasNext) {
-      val next = iter.next()
-      if (next.size != 7) {
-        val tweet = current.get(6) + " " + next.filterNot(_ == null).mkString("")
-        val row = List(current.get(0), current.get(1), current.get(2), current.get(3),
-          current.get(4), current.get(5), tweet)
-        current = row
-      }
-      else {
-        list.add(current)
-        current = next
-      }
-    }
+     while (iter.hasNext) {
+           next = iter.next()
+          if (next.size != 7) {
+            val tweet = current.get(6) + " " + next.filterNot(_ == null).mkString("")
+            val row = current.init :+ tweet
+            current = row
+          }
+          else {
+            list.add(current)
+            current = next
+          }
+        }
+    list.add(next) //add last element
 
-    val rows = list.tail.map(s => Row.fromSeq(toInt(s)))
+    val rows = list.tail.map(s => Row.fromSeq(toInt(s))) //convert to list[Row], drop header
     val restoredRDD = spark.sparkContext.parallelize(rows)
-
 
     //schema for the dataframe
     val schema = new StructType(Array(StructField("id", IntegerType, nullable = false)
@@ -80,7 +71,6 @@ object LogRegClassifier {
     ))
 
     var df = spark.createDataFrame(restoredRDD, schema)
-
 
     //replace URLs and Mentions with general tags
     val urlPattern = "[\"]?http[s]?[^\\s | \" | ;]*"
@@ -100,14 +90,7 @@ object LogRegClassifier {
     remover.setStopWords(stopwords)
     df = remover.transform(df)
 
-
-    //df.select("id","tweet").collect().take(200).foreach(println(_))
-
-    //TODO: save to file, rename class
+    //TODO: rename class
     df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
-
-   val test = spark.read.json("/home/kratzbaum/Dokumente/clean_data")
-   test.show
-
   }
 }

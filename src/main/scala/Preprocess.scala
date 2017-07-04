@@ -1,7 +1,3 @@
-/**
-  * Created by Julia on 07.06.2017.
-  */
-
 import java.util
 
 import scala.collection.JavaConversions._
@@ -12,8 +8,10 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.ml.feature.{RegexTokenizer, StopWordsRemover}
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
-
-object LogRegClassifier {
+/**
+  * Created by kratzbaum on 04.07.17.
+  */
+object Preprocess {
 
   //convert first 6 fields of Sequence to integer
   def toInt(seq: Seq[String]): Seq[Any] = {
@@ -31,7 +29,7 @@ object LogRegClassifier {
     val data = "/home/kratzbaum/Dokumente/labeled_data.csv"
 
     val spark = SparkSession.builder.master("local[*]")
-      .appName("Example").getOrCreate()
+      .appName("Preprocess").getOrCreate()
 
     val rdd = spark.sparkContext.textFile(data).filter(!_.isEmpty).map(s => s.toLowerCase)
       .map(s => s.split(",", 7).toSeq)
@@ -91,5 +89,7 @@ object LogRegClassifier {
 
     //TODO: rename class
     df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
+    val test = spark.sqlContext.read.json("/home/kratzbaum/Dokumente/clean_data")
+    test.sort("id").show
   }
 }

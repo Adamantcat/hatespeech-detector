@@ -2,94 +2,94 @@
   * Created by Julia on 07.06.2017.
   */
 
-import java.util
+import java.util._
 
 import scala.collection.JavaConversions._
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
-import org.apache.spark.ml.feature.{RegexTokenizer, StopWordsRemover}
+import org.apache.spark.ml.feature._
+import edu.stanford.nlp.pipeline._
+import edu.stanford.nlp.ling.CoreAnnotations._
+import edu.stanford.nlp.simple._
+import org.apache.hadoop.hdfs.util.Diff.ListType
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
 
 object LogRegClassifier {
 
-  //convert first 6 fields of Sequence to integer
-  def toInt(seq: Seq[String]): Seq[Any] = {
-    val last = seq.last
-    val intSeq = seq.slice(0, 6).map(s => s.trim.toInt)
-    intSeq :+ last
-  }
-
   def main(args: Array[String]): Unit = {
 
-    //reduce verbosity of logger
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
 
-    val data = "/home/kratzbaum/Dokumente/labeled_data.csv"
-
     val spark = SparkSession.builder.master("local[*]")
-      .appName("Example").getOrCreate()
+      .appName("LogReg").getOrCreate()
 
-    val rdd = spark.sparkContext.textFile(data).filter(!_.isEmpty).map(s => s.toLowerCase)
-      .map(s => s.split(",", 7).toSeq)
+    import spark.implicits._
 
-    //restore truncated lines
-    val iter = rdd.toLocalIterator
-    var current = iter.next()
-    var next = current
-    val list: util.List[Seq[String]] = new util.ArrayList[Seq[String]]()
+    var df = spark.read.json("C:\\Users\\Julia\\Documents\\BA-Thesis\\clean_data")
+      .sort("id")
 
-    while (iter.hasNext) {
-      next = iter.next()
-      if (next.size != 7) {
-        val tweet = current.get(6) + " " + next.filterNot(_ == null).mkString("")
-        val row = current.init :+ tweet
-        current = row
-      }
-      else {
-        list.add(current)
-        current = next
-      }
-    }
-    list.add(next) //add last element
+    val getLemmas = udf((tokens: Seq[String]) => {
+      new Sentence(tokens).lemmas().toIndexedSeq
+    })
 
-    val rows = list.tail.map(s => Row.fromSeq(toInt(s))) //convert to list[Row], drop header
-    val restoredRDD = spark.sparkContext.parallelize(rows)
+    val getPOS = udf((tokens: Seq[String]) => {
+      new Sentence(tokens).posTags().toIndexedSeq
+    })
 
-    //schema for the dataframe
-    val schema = new StructType(Array(StructField("id", IntegerType, nullable = false)
-      , StructField("count", IntegerType, nullable = false)
-      , StructField("hate_speech", IntegerType, nullable = false)
-      , StructField("offensive_language", IntegerType, nullable = false)
-      , StructField("neither", IntegerType, nullable = false)
-      , StructField("class", IntegerType, nullable = false)
-      , StructField("tweet", StringType, nullable = false)
-    ))
+    df = df.withColumn("lemmas", getLemmas(df("filtered")))
+    df = df.withColumn("pos", getPOS(df("filtered")))
 
-    var df = spark.createDataFrame(restoredRDD, schema)
+    val unigram = new NGram().setN(1).setInputCol("lemmas").setOutputCol("unigrams")
+    df = unigram.transform(df)
 
-    //replace URLs and Mentions with general tags
-    val urlPattern = "[\"]?http[s]?[^\\s | \" | ;]*"
-    val mentionPattern = "@[^\\s|]*"
+    val bigram = new NGram().setN(2).setInputCol("lemmas").setOutputCol("bigrams")
+    df = bigram.transform(df)
 
-    df = df.withColumn("tweet", regexp_replace(df("tweet"), urlPattern, "URL_TAG"))
-    df = df.withColumn("tweet", regexp_replace(df("tweet"), mentionPattern, "MENTION_TAG"))
+    val trigram = new NGram().setN(3).setInputCol("lemmas").setOutputCol("trigrams")
+    df = trigram.transform(df)
 
-    //tokenize tweets, split at nonword character except & and #
-    val tokenizer = new RegexTokenizer().setInputCol("tweet").setOutputCol("tokens")
-      .setPattern("[^\\w&#]").setToLowercase(false)
-    df = tokenizer.transform(df)
+    // tf vectors for uni-, bi-, and trigrams
+    val hashingTF_unigram = new HashingTF()
+      .setInputCol("unigrams").setOutputCol("rawFeatures_unigrams")
 
-    //remove stopwords
-    val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("filtered")
-    val stopwords = remover.getStopWords ++ Array[String]("rt", "ff", "#ff")
-    remover.setStopWords(stopwords)
-    df = remover.transform(df)
+    df = hashingTF_unigram.transform(df)
 
-    //TODO: rename class
-    df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
+    val hashingTF_bigram = new HashingTF()
+      .setInputCol("bigrams").setOutputCol("rawFeatures_bigrams")
+
+    df = hashingTF_bigram.transform(df)
+
+    val hashingTF_trigram = new HashingTF()
+      .setInputCol("trigrams").setOutputCol("rawFeatures_trigrams")
+
+    df = hashingTF_trigram.transform(df)
+
+    //idf vectors for all n-grams
+    val idf_unigram = new IDF().setInputCol("rawFeatures_unigrams").setOutputCol("features_unigrams")
+    val idfModel_unigram = idf_unigram.fit(df)
+
+    df = idfModel_unigram.transform(df)
+
+    val idf_bigram = new IDF().setInputCol("rawFeatures_bigrams").setOutputCol("features_bigrams")
+    val idfModel_bigram = idf_bigram.fit(df)
+
+    df = idfModel_bigram.transform(df)
+
+    val idf_trigram = new IDF().setInputCol("rawFeatures_trigrams").setOutputCol("features_trigrams")
+    val idfModel_trigram = idf_trigram.fit(df)
+
+    df = idfModel_trigram.transform(df)
+
+    //define the feature columns to put in the feature vector**
+    val featureCols = Array("features_unigrams", "features_bigrams", "features_trigrams")
+    val assembler = new VectorAssembler().setInputCols(featureCols).setOutputCol("features")
+    df = assembler.transform(df)
+
+    df.show
+
   }
 }

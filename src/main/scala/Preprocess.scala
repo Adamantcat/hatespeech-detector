@@ -87,7 +87,7 @@ object Preprocess {
     remover.setStopWords(stopwords)
     df = remover.transform(df)
 
-    //TODO: rename class
+    //save as file
     df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
     val test = spark.sqlContext.read.json("/home/kratzbaum/Dokumente/clean_data")
     test.sort("id").show

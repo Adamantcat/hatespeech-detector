@@ -110,6 +110,5 @@ object LogRegClassifier {
 
     val cvModel = cv.fit(df)
     cvModel.avgMetrics.foreach(println(_))
-
   }
 }

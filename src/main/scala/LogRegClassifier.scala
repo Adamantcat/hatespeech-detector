@@ -10,6 +10,9 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml.feature._
+import org.apache.spark.ml.classification.LogisticRegression
+import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import edu.stanford.nlp.pipeline._
 import edu.stanford.nlp.ling.CoreAnnotations._
 import edu.stanford.nlp.simple._
@@ -85,11 +88,28 @@ object LogRegClassifier {
     df = idfModel_trigram.transform(df)
 
     //define the feature columns to put in the feature vector**
-    val featureCols = Array("features_unigrams", "features_bigrams", "features_trigrams")
+    // val featureCols = Array("features_unigrams", "features_bigrams", "features_trigrams")
+    val featureCols = Array("features_trigrams")
     val assembler = new VectorAssembler().setInputCols(featureCols).setOutputCol("features")
     df = assembler.transform(df)
 
-    df.show
+   df = df.withColumnRenamed("class", "label")
+
+    val lr = new LogisticRegression().setFeaturesCol("features")
+      .setMaxIter(10).setTol(1E-4)
+    // Fit the model
+    //val lrModel = lr.fit(df)
+
+    println("start training")
+    val paramGrid = new ParamGridBuilder().build() // No parameter search
+    val cv = new CrossValidator()
+      .setEstimator(lr)
+      .setEvaluator(new MulticlassClassificationEvaluator())
+      .setEstimatorParamMaps(paramGrid)
+      .setNumFolds(5)
+
+    val cvModel = cv.fit(df)
+    cvModel.avgMetrics.foreach(println(_))
 
   }
 }

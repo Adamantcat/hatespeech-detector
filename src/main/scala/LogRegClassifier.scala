@@ -93,22 +93,35 @@ object LogRegClassifier {
     val assembler = new VectorAssembler().setInputCols(featureCols).setOutputCol("features")
     df = assembler.transform(df)
 
-   df = df.withColumnRenamed("class", "label")
+    df = df.withColumnRenamed("class", "label")
+    val Array(training, test) = df.randomSplit(Array(0.7, 0.3))
+
+    println("start training")
 
     val lr = new LogisticRegression().setFeaturesCol("features")
       .setMaxIter(10).setTol(1E-4)
     // Fit the model
-    //val lrModel = lr.fit(df)
+    val lrModel = lr.fit(training)
+    println(s"Coefficients: ${lrModel.coefficientMatrix} Intercept: ${lrModel.interceptVector}")
 
-    println("start training")
-    val paramGrid = new ParamGridBuilder().build() // No parameter search
-    val cv = new CrossValidator()
-      .setEstimator(lr)
-      .setEvaluator(new MulticlassClassificationEvaluator())
-      .setEstimatorParamMaps(paramGrid)
-      .setNumFolds(5)
+    val predictions = lrModel.transform(test)
+    predictions.show()
 
-    val cvModel = cv.fit(df)
-    cvModel.avgMetrics.foreach(println(_))
+    val evaluator = new MulticlassClassificationEvaluator()
+      .setLabelCol("label").setMetricName("accuracy")
+
+    val accuracy = evaluator.evaluate(predictions)
+    println("accuracy: " + accuracy)
+
+    /* val paramGrid = new ParamGridBuilder().build() // No parameter search
+     val cv = new CrossValidator()
+       .setEstimator(lr)
+       .setEvaluator(new MulticlassClassificationEvaluator())
+       .setEstimatorParamMaps(paramGrid)
+       .setNumFolds(5)
+
+     val cvModel = cv.fit(df)
+     cvModel.avgMetrics.foreach(println(_))
+     */
   }
 }

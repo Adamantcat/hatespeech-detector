@@ -99,7 +99,7 @@ object LogRegClassifier {
     println("start training")
 
     val lr = new LogisticRegression().setFeaturesCol("features")
-      .setMaxIter(10).setTol(1E-4)
+      .setMaxIter(20).setTol(1E-4)
     // Fit the model
     val lrModel = lr.fit(training)
     println(s"Coefficients: ${lrModel.coefficientMatrix} Intercept: ${lrModel.interceptVector}")
@@ -112,6 +112,19 @@ object LogRegClassifier {
 
     val accuracy = evaluator.evaluate(predictions)
     println("accuracy: " + accuracy)
+
+    evaluator.setMetricName("weightedPrecision")
+    val precision = evaluator.evaluate(predictions)
+    println("precision: " + precision)
+
+    evaluator.setMetricName("weightedRecall")
+    val recall = evaluator.evaluate(predictions)
+    println("recall: " + recall)
+
+    evaluator.setMetricName("f1")
+    val f1 = evaluator.evaluate(predictions)
+    println("f1-score: " + f1)
+
 
     /* val paramGrid = new ParamGridBuilder().build() // No parameter search
      val cv = new CrossValidator()

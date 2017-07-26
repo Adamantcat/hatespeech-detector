@@ -95,18 +95,20 @@ object Test {
     println("f1: " + f1)
     */
 
-     // Prepare test documents, which are unlabeled (id, text) tuples.
+    /* // Prepare test documents, which are unlabeled (id, text) tuples.
      val test = spark.createDataFrame(Seq(
        (4L, "spark i j k"),
        (5L, "l m n"),
        (6L, "mapreduce spark"),
        (7L, "apache hadoop")
      )).toDF("id", "text")
-
+*/
     import spark.implicits._
 
-    val predictions = bestModel.transform(training)
     bestModel.save("C:\\Users\\Julia\\Documents\\BA-Thesis\\best_model")
+
+    val same_model = PipelineModel.load("C:\\Users\\Julia\\Documents\\BA-Thesis\\best_model")
+    val predictions = same_model.transform(training)
     predictions.printSchema()
 
     val predictionAndLabels = predictions.map(r => new Tuple2[Double, Double](r.getDouble(2), r.getDouble(7))).rdd

@@ -26,10 +26,12 @@ object Preprocess {
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
 
-    val data = "/home/kratzbaum/Dokumente/labeled_data.csv"
+    val data = "C:\\Users\\Julia\\Documents\\BA-Thesis\\labeled_data.csv"
 
     val spark = SparkSession.builder.master("local[*]")
       .appName("Preprocess").getOrCreate()
+
+    import spark.implicits._
 
     val rdd = spark.sparkContext.textFile(data).filter(!_.isEmpty).map(s => s.toLowerCase)
       .map(s => s.split(",", 7).toSeq)
@@ -76,20 +78,33 @@ object Preprocess {
     df = df.withColumn("tweet", regexp_replace(df("tweet"), urlPattern, "URL_TAG"))
     df = df.withColumn("tweet", regexp_replace(df("tweet"), mentionPattern, "MENTION_TAG"))
 
-    //tokenize tweets, split at nonword character except & and #
-    val tokenizer = new RegexTokenizer().setInputCol("tweet").setOutputCol("tokens")
-      .setPattern("[^\\w&#]").setToLowercase(false)
-    df = tokenizer.transform(df)
+    //tokneization, preserve punctuation
+    val regexp = "[&#]*\\w+|[^\\w\\s]".r
+    val getTokens = udf((tweet: String) => {
+      regexp.findAllIn(tweet).toSeq
+    })
 
+    df = df.withColumn("tokens", getTokens(df("tweet")))
+    df.select("tokens").take(20).foreach(println(_))
+
+
+    //tokenize tweets, split at nonword character except & and #
+    /* val tokenizer = new RegexTokenizer().setInputCol("tweet").setOutputCol("tokens")
+        .setPattern("[&#]*\\w+|[^\\w\\s]").setToLowercase(false)
+      df = tokenizer.transform(df)*/
+    /*
     //remove stopwords
     val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("filtered")
     val stopwords = remover.getStopWords ++ Array[String]("rt", "ff", "#ff")
     remover.setStopWords(stopwords)
     df = remover.transform(df)
+    */
 
+    /*
     //save as file
     df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
     val test = spark.sqlContext.read.json("/home/kratzbaum/Dokumente/clean_data")
     test.sort("id").show
+    */
   }
 }

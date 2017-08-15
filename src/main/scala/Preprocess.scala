@@ -1,13 +1,14 @@
 import java.util
 
-import scala.collection.JavaConversions._
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.SparkSession
+import edu.stanford.nlp.simple._
+import org.apache.log4j.{Level, Logger}
+import org.apache.spark.ml.feature.NGram
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
-import org.apache.spark.ml.feature.{RegexTokenizer, StopWordsRemover}
-import org.apache.log4j.Logger
-import org.apache.log4j.Level
+import org.apache.spark.sql.types._
+
+import scala.collection.JavaConversions._
+
 /**
   * Created by kratzbaum on 04.07.17.
   */
@@ -26,12 +27,10 @@ object Preprocess {
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
 
-    val data = "C:\\Users\\Julia\\Documents\\BA-Thesis\\labeled_data.csv"
+    val data = "/home/kratzbaum/Dokumente/labeled_data.csv"
 
     val spark = SparkSession.builder.master("local[*]")
       .appName("Preprocess").getOrCreate()
-
-    import spark.implicits._
 
     val rdd = spark.sparkContext.textFile(data).filter(!_.isEmpty).map(s => s.toLowerCase)
       .map(s => s.split(",", 7).toSeq)
@@ -85,7 +84,32 @@ object Preprocess {
     })
 
     df = df.withColumn("tokens", getTokens(df("tweet")))
-    df.select("tokens").take(20).foreach(println(_))
+
+    val getLemmas = udf((tokens: Seq[String]) => {
+      new Sentence(tokens).lemmas().toIndexedSeq
+    })
+
+    val getPOS = udf((tokens: Seq[String]) => {
+      new Sentence(tokens).posTags().toIndexedSeq
+    })
+
+    df = df.withColumn("lemmas", getLemmas(df("tokens")))
+    df = df.withColumn("pos", getPOS(df("tokens")))
+
+    val unigram = new NGram().setN(1).setInputCol("lemmas").setOutputCol("unigrams")
+    df = unigram.transform(df)
+
+    val bigram = new NGram().setN(2).setInputCol("lemmas").setOutputCol("bigrams")
+    df = bigram.transform(df)
+
+    val trigram = new NGram().setN(3).setInputCol("lemmas").setOutputCol("trigrams")
+    df = trigram.transform(df)
+
+
+    //save as file
+    df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
+    val test = spark.sqlContext.read.json("/home/kratzbaum/Dokumente/clean_data")
+    test.sort("id").show
 
 
     //tokenize tweets, split at nonword character except & and #
@@ -100,11 +124,5 @@ object Preprocess {
     df = remover.transform(df)
     */
 
-    /*
-    //save as file
-    df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
-    val test = spark.sqlContext.read.json("/home/kratzbaum/Dokumente/clean_data")
-    test.sort("id").show
-    */
   }
 }

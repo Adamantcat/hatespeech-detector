@@ -3,16 +3,13 @@
   */
 
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature.{HashingTF, Tokenizer}
-import org.apache.spark.ml.PipelineModel
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
-
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.SparkSession
 
 
 object Test {
@@ -89,11 +86,11 @@ object Test {
     println("best hasshingTF: " + bestHashingTFNumFeatures)
     println("best lr: " + bestLrRegParamFeatures)
 
-  /*  val predictions = bestModel.transform(training)
-    predictions.show()
-   val f1 = evaluator.evaluate(predictions)
-    println("f1: " + f1)
-    */
+    /*  val predictions = bestModel.transform(training)
+      predictions.show()
+     val f1 = evaluator.evaluate(predictions)
+      println("f1: " + f1)
+      */
 
     /* // Prepare test documents, which are unlabeled (id, text) tuples.
      val test = spark.createDataFrame(Seq(
@@ -105,9 +102,9 @@ object Test {
 */
     import spark.implicits._
 
-    bestModel.save("C:\\Users\\Julia\\Documents\\BA-Thesis\\best_model")
+    bestModel.save("/home/kratzbaum/Dokumente/best_model")
 
-    val same_model = PipelineModel.load("C:\\Users\\Julia\\Documents\\BA-Thesis\\best_model")
+    val same_model = PipelineModel.load("/home/kratzbaum/Dokumente/best_model")
     val predictions = same_model.transform(training)
     predictions.printSchema()
 

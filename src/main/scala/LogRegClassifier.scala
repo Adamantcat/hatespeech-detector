@@ -123,35 +123,9 @@ object LogRegClassifier {
 
     avgMetrics.foreach(println(_))
 
-    val bestModel = cvModel.bestModel.asInstanceOf[PipelineModel]
-    val bestParams = bestModel.explainParams()
+    val best_model = cvModel.bestModel.asInstanceOf[PipelineModel]
+    val bestParams = best_model.explainParams()
 
-    println("best Parameters: ")
-    for(i <- 0 until bestModel.stages.length) {
-      println(bestModel.stages(i).explainParams() + "\n")
-    }
-
-    bestModel.save("/home/kratzbaum/Dokumente/best_model")
-
-
-    val predictions = bestModel.transform(test)
-
-    val evaluator = new MulticlassClassificationEvaluator().setMetricName("f1")
-      .setLabelCol("label").setPredictionCol("prediction")
-    val f1 = evaluator.evaluate(predictions)
-    println("f1 score: " + f1)
-
-    evaluator.setMetricName("weightedPrecision")
-    val precision = evaluator.evaluate(predictions)
-    println("weightedPrecision: " + precision)
-
-    evaluator.setMetricName("weightedRecall")
-    val recall = evaluator.evaluate(predictions)
-    println("weightedPrecision: " + recall)
-
-    evaluator.setMetricName("accuracy")
-    val accuracy = evaluator.evaluate(predictions)
-    println("accuracy: " + accuracy)
-
+    best_model.save("/home/kratzbaum/Dokumente/best_model")
   }
 }

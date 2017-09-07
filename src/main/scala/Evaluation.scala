@@ -3,9 +3,9 @@
   */
 
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.ml.classification.LogisticRegressionModel
+import org.apache.spark.ml.PipelineModel
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import org.apache.spark.ml.feature._
+import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.sql.SparkSession
 
 object Evaluation {
@@ -22,22 +22,82 @@ object Evaluation {
     var test = spark.read.json("/home/kratzbaum/Dokumente/test")
       .sort("id")
 
+    import spark.implicits._
 
-    val idf_trigram = new IDF().setInputCol("new_rawFeatures_trigrams").setOutputCol("new_features_trigrams")
-    val idfModel_trigram = idf_trigram.fit(test)
+    val best_model = PipelineModel.load("/home/kratzbaum/Dokumente/best_model")
 
-    test = idfModel_trigram.transform(test)
+    println("best Parameters: ")
+    for (i <- 0 until best_model.stages.length) {
+      println(best_model.stages(i).explainParams() + "\n")
+    }
 
-
-    val assembler = new VectorAssembler().setInputCols(Array("new_features_trigrams")).setOutputCol("features")
-    test = assembler.transform(test)
-
-    val best_model = LogisticRegressionModel.load("/home/kratzbaum/Dokumente/best_model")
     val predictions = best_model.transform(test)
 
     val evaluator = new MulticlassClassificationEvaluator().setMetricName("f1")
+      .setLabelCol("label").setPredictionCol("prediction")
     val f1 = evaluator.evaluate(predictions)
     println("f1 score: " + f1)
-  }
 
+    evaluator.setMetricName("weightedPrecision")
+    val precision = evaluator.evaluate(predictions)
+    println("weighted Precision: " + precision)
+
+    evaluator.setMetricName("weightedRecall")
+    val recall = evaluator.evaluate(predictions)
+    println("weighted Recall: " + recall)
+
+    evaluator.setMetricName("accuracy")
+    val accuracy = evaluator.evaluate(predictions)
+    println("accuracy: " + accuracy)
+
+    //rdd based mllib has some additional useful metrics
+    //to use these, dataframe needs to be converted to rdd
+    val predictionsAndLabels = predictions.select("prediction", "label")
+      .map(r => new Tuple2[Double, Double](r.getDouble(0), r.getLong(1).toDouble)).rdd
+
+    val metrics = new MulticlassMetrics(predictionsAndLabels)
+    val falsePositives = metrics.weightedFalsePositiveRate
+    println("Weighted false positive rate: " + falsePositives + "\n")
+
+    // Precision by label
+    val labels = metrics.labels
+    labels.foreach { l =>
+      println(s"Precision($l) = " + metrics.precision(l))
+    }
+    println()
+
+    // Recall by label
+    labels.foreach { l =>
+      println(s"Recall($l) = " + metrics.recall(l))
+    }
+    println()
+
+    // False positive rate by label
+    labels.foreach { l =>
+      println(s"FPR($l) = " + metrics.falsePositiveRate(l))
+    }
+    println()
+
+    // F-measure by label
+    labels.foreach { l =>
+      println(s"F1-Score($l) = " + metrics.fMeasure(l))
+    }
+    println()
+
+    //basic counts
+    val labelCounts = predictionsAndLabels.values.groupBy(identity).mapValues(_.size)
+    println("total entries in test set: " + test.count())
+    println("counts per label")
+    labelCounts.foreach(l => println(l._1 + ": " + l._2))
+    println()
+
+    //prints labels in ascending order: 0.0 1.0 2.0
+    //                              0.0
+    //                              1.0
+    //                              2.0
+    val confusionMatrix = metrics.confusionMatrix
+    println(confusionMatrix)
+    println()
+
+  }
 }

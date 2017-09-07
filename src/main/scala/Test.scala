@@ -102,10 +102,10 @@ object Test {
 */
     import spark.implicits._
 
-    bestModel.save("/home/kratzbaum/Dokumente/best_model")
+    //bestModel.save("/home/kratzbaum/Dokumente/best_model")
 
-    val same_model = PipelineModel.load("/home/kratzbaum/Dokumente/best_model")
-    val predictions = same_model.transform(training)
+   // val same_model = PipelineModel.load("/home/kratzbaum/Dokumente/best_model")
+    val predictions = bestModel.transform(training)
     predictions.printSchema()
 
     val predictionAndLabels = predictions.map(r => new Tuple2[Double, Double](r.getDouble(2), r.getDouble(7))).rdd

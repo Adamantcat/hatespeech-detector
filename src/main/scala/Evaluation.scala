@@ -97,7 +97,5 @@ object Evaluation {
     //                              2.0
     val confusionMatrix = metrics.confusionMatrix
     println(confusionMatrix)
-    println()
-
   }
 }

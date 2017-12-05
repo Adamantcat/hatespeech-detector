@@ -23,6 +23,7 @@ object Test {
       .appName("Example").getOrCreate()
 
     // Prepare training data from a list of (id, text, label) tuples.
+
     val training = spark.createDataFrame(Seq(
       (0L, "a b c d e spark", 1.0),
       (1L, "b d", 0.0),

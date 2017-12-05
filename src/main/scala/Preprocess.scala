@@ -2,7 +2,7 @@ import java.util
 
 import edu.stanford.nlp.simple._
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.ml.feature.NGram
+import org.apache.spark.ml.feature.{NGram, StopWordsRemover}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
@@ -64,7 +64,7 @@ object Preprocess {
       , StructField("hate_speech", IntegerType, nullable = false)
       , StructField("offensive_language", IntegerType, nullable = false)
       , StructField("neither", IntegerType, nullable = false)
-      , StructField("class", IntegerType, nullable = false)
+      , StructField("label", IntegerType, nullable = false)
       , StructField("tweet", StringType, nullable = false)
     ))
 
@@ -74,11 +74,15 @@ object Preprocess {
     val urlPattern = "[\"]?http[s]?[^\\s | \" | ;]*"
     val mentionPattern = "@[^\\s|]*"
 
-    df = df.withColumn("tweet", regexp_replace(df("tweet"), urlPattern, "URL_TAG"))
-    df = df.withColumn("tweet", regexp_replace(df("tweet"), mentionPattern, "MENTION_TAG"))
+    df = df.withColumn("tweet", regexp_replace(df("tweet"), urlPattern, "url_tag"))
+    df = df.withColumn("tweet", regexp_replace(df("tweet"), mentionPattern, "mention_tag"))
 
-    //tokneization, preserve punctuation
-    val regexp = "[&#]*\\w+|[^\\w\\s]".r
+    //tokenization, preserve punctuation, matches:
+    //emoticons starting with &#, hashtags and escape characters (e.g. &#1234, #halloween, &amp)
+    //sequences of word characters interrupted by * (e.g. n*gga)
+    //sequences of word characters (normal words)
+    //non-word and non-whitespace characters (puntuation)
+    val regexp = "[&#]*\\w+[\\*]*\\w+|\\w+|[^\\w\\s]".r
     val getTokens = udf((tweet: String) => {
       regexp.findAllIn(tweet).toSeq
     })
@@ -86,15 +90,15 @@ object Preprocess {
     df = df.withColumn("tokens", getTokens(df("tweet")))
 
     val getLemmas = udf((tokens: Seq[String]) => {
-      new Sentence(tokens).lemmas().toIndexedSeq
+     new Sentence(tokens).lemmas().toIndexedSeq
     })
 
-    val getPOS = udf((tokens: Seq[String]) => {
+   /* val getPOS = udf((tokens: Seq[String]) => {
       new Sentence(tokens).posTags().toIndexedSeq
-    })
+    }) */
 
     df = df.withColumn("lemmas", getLemmas(df("tokens")))
-    df = df.withColumn("pos", getPOS(df("tokens")))
+    //df = df.withColumn("pos", getPOS(df("tokens")))
 
     val unigram = new NGram().setN(1).setInputCol("lemmas").setOutputCol("unigrams")
     df = unigram.transform(df)
@@ -105,21 +109,49 @@ object Preprocess {
     val trigram = new NGram().setN(3).setInputCol("lemmas").setOutputCol("trigrams")
     df = trigram.transform(df)
 
-
     //save as file
     df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
 
-    //tokenize tweets, split at nonword character except & and #
-    /* val tokenizer = new RegexTokenizer().setInputCol("tweet").setOutputCol("tokens")
-        .setPattern("[&#]*\\w+|[^\\w\\s]").setToLowercase(false)
-      df = tokenizer.transform(df)*/
-    /*
-    //remove stopwords
-    val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("filtered")
-    val stopwords = remover.getStopWords ++ Array[String]("rt", "ff", "#ff")
+
+    //******************************************************************************
+    //some document statistics
+
+    //total number of tweets
+    println("total num tweets: " + df.count())
+
+    //class counts
+    val totalCounts = df.select("label").collect.groupBy(identity).mapValues(_.size)
+    println("class counts in complete dataset:")
+    totalCounts.foreach(l => println(l._1 + ": " + l._2))
+
+
+    //remove stopwords, not used by classifier
+    val remover = new StopWordsRemover().setInputCol("lemmas").setOutputCol("filtered")
+    val stopwords = remover.getStopWords ++ Array[String](".", ",", ";", ":", "?", "!", "\"", "\'")
     remover.setStopWords(stopwords)
     df = remover.transform(df)
-    */
 
+    //compute most frequent words for each class
+    val hate = df.filter("label == 0")
+    val offensive = df.filter("label == 1")
+    val neither = df.filter("label == 2")
+
+    val hateFreq = hate.select("filtered").rdd.flatMap(x => x.getSeq[String](0)).map(word => (word, 1))
+    .reduceByKey(_+_).sortBy(_._2, numPartitions = 1, ascending = false)
+
+    println("Top 20 hate words:")
+    hateFreq.take(20).foreach(println(_))
+
+    val offenseFreq = offensive.select("filtered").rdd.flatMap(x => x.getSeq[String](0)).map(word => (word, 1))
+      .reduceByKey(_+_).sortBy(_._2, numPartitions = 1, ascending = false)
+
+    println("Top 20 offensive words")
+    offenseFreq.take(20).foreach(println(_))
+
+    val neutralFreq = neither.select("filtered").rdd.flatMap(x => x.getSeq[String](0)).map(word => (word, 1))
+      .reduceByKey(_+_).sortBy(_._2, numPartitions = 1, ascending = false)
+
+    println("Top 20 neutral words")
+    neutralFreq.take(20).foreach(println(_))
   }
 }

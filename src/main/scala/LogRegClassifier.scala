@@ -3,11 +3,11 @@
   */
 
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.classification.LogisticRegression
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
-import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 
@@ -24,12 +24,8 @@ object LogRegClassifier {
     var df = spark.read.json("/home/kratzbaum/Dokumente/clean_data")
       .sort("id")
 
-    df = df.withColumnRenamed("class", "label")
+    //df = df.withColumnRenamed("class", "label")
     val Array(train, test) = df.cache.randomSplit(Array(0.8, 0.2))
-
-    val totalCounts = df.select("label").collect.groupBy(identity).mapValues(_.size)
-    println("class counts in complete dataset:")
-    totalCounts.foreach(l => println(l._1 + ": " + l._2))
 
     val trainCounts = train.select("label").collect.groupBy(identity).map(r => (r._1.getLong(0), r._2.size))
     println("class counts in training data:")
@@ -40,11 +36,13 @@ object LogRegClassifier {
     //save test data to file for later use
     test.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/test")
 
+    //assign weights to underrepresented classes, similar effect to oversampling
+    //pretend all classes are equally distributed
     val setWeights = udf((label: Int) => {
       label match {
-        case 0 =>  trainCounts.getOrElse(1, 0).toDouble/trainCounts.getOrElse(0, 0)
+        case 0 => trainCounts.getOrElse(1, 0).toDouble / trainCounts.getOrElse(0, 0)
         case 1 => 1
-        case 2 => trainCounts.getOrElse(1, 0).toDouble/trainCounts.getOrElse(2, 0)
+        case 2 => trainCounts.getOrElse(1, 0).toDouble / trainCounts.getOrElse(2, 0)
         case _ => 0.0
       }
     })
@@ -64,6 +62,7 @@ object LogRegClassifier {
     val lr = new LogisticRegression().setFeaturesCol("features")
       .setMaxIter(10).setTol(1E-4).setPredictionCol("prediction")
 
+
     val pipeline = new Pipeline()
       .setStages(Array(hashingTF, idf, assembler, lr))
 
@@ -74,6 +73,18 @@ object LogRegClassifier {
       .addGrid(lr.weightCol, Array("weight", ""))
       .build()
 
+    /*
+        val miniGrid = new ParamGridBuilder()
+          .addGrid(hashingTF.inputCol, Array("bigrams", "trigrams"))
+          .addGrid(lr.elasticNetParam, Array(0.3, 0.7)).build()
+
+        val cv = new CrossValidator()
+          .setEstimator(pipeline)
+          .setEvaluator(new MulticlassClassificationEvaluator().setMetricName("f1")
+            .setLabelCol("label").setPredictionCol("prediction"))
+          .setEstimatorParamMaps(miniGrid)
+          .setNumFolds(3)
+          */
 
     val cv = new CrossValidator()
       .setEstimator(pipeline)
@@ -82,10 +93,14 @@ object LogRegClassifier {
       .setEstimatorParamMaps(paramGrid)
       .setNumFolds(5)
 
-    val cvModel = cv.fit(training)
-    val avgMetrics = cvModel.avgMetrics
 
-    avgMetrics.foreach(println(_))
+    val cvModel = cv.fit(training)
+    val results = cvModel.getEstimatorParamMaps.zip(cvModel.avgMetrics)
+
+    results.foreach(println(_))
+
+    //val avgMetrics = cvModel.avgMetrics
+    //avgMetrics.foreach(println(_))
 
     val best_model = cvModel.bestModel.asInstanceOf[PipelineModel]
     best_model.save("/home/kratzbaum/Dokumente/best_model")

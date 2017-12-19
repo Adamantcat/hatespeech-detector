@@ -120,7 +120,7 @@ object Preprocess {
     println("total num tweets: " + df.count())
 
     //class counts
-    val totalCounts = df.select("label").collect.groupBy(identity).mapValues(_.size)
+    val totalCounts = df.select("label").collect.groupBy(identity).mapValues(_.length)
     println("class counts in complete dataset:")
     totalCounts.foreach(l => println(l._1 + ": " + l._2))
 

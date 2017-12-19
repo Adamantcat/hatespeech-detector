@@ -27,14 +27,14 @@ object LogRegClassifier {
     //df = df.withColumnRenamed("class", "label")
     val Array(train, test) = df.cache.randomSplit(Array(0.8, 0.2))
 
-    val trainCounts = train.select("label").collect.groupBy(identity).map(r => (r._1.getLong(0), r._2.size))
+    val trainCounts = train.select("label").collect.groupBy(identity).map(r => (r._1.getLong(0), r._2.length))
     println("class counts in training data:")
     trainCounts.foreach(l => println(l._1 + ": " + l._2))
 
     println(trainCounts)
 
     //save test data to file for later use
-    test.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/test")
+    test.write.format("json").save("/home/kratzbaum/Dokumente/test")
 
     //assign weights to underrepresented classes, similar effect to oversampling
     //pretend all classes are equally distributed

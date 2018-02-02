@@ -2,12 +2,14 @@
   * Created by Julia on 07.06.2017.
   */
 
+import java.io.{File, PrintWriter}
+
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.ml.{Pipeline, PipelineModel}
-import org.apache.spark.ml.classification.LogisticRegression
+import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature._
-import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
+import org.apache.spark.ml.tuning.{CrossValidator, MultiMetricCrossValidator, ParamGridBuilder}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 
@@ -34,7 +36,7 @@ object LogRegClassifier {
     println(trainCounts)
 
     //save test data to file for later use
-    test.write.format("json").save("/home/kratzbaum/Dokumente/test")
+   test.write.format("json").save("/home/kratzbaum/Dokumente/test")
 
     //assign weights to underrepresented classes, similar effect to oversampling
     //pretend all classes are equally distributed
@@ -47,18 +49,62 @@ object LogRegClassifier {
       }
     })
 
-    val training = train.withColumn("weight", setWeights(train("label")))
+    var training = train.withColumn("weight", setWeights(train("label")))
 
     val hashingTF = new HashingTF()
 
     val idf = new IDF().setInputCol(hashingTF.getOutputCol).setOutputCol("ngram_features")
 
-    //define the feature columns to put in the feature vector**
-    val featureCols = Array(idf.getOutputCol)
-    val assembler = new VectorAssembler().setInputCols(featureCols).setOutputCol("features")
+    val hashingTF_bigrams = new HashingTF().setInputCol("bigrams").setOutputCol("bigramTF").setNumFeatures(100000)
+    val idf_bigrams = new IDF().setInputCol("bigramTF").setOutputCol("bigramFeatures")
+
+    val hashingTF_trigrams = new HashingTF().setInputCol("trigrams").setOutputCol("trigramTF").setNumFeatures(100000)
+    val idf_trigrams = new IDF().setInputCol("trigramTF").setOutputCol("trigramFeatures")
+
+
+    val assembler = new VectorAssembler().setInputCols(Array("bigramFeatures", "trigramFeatures"))
+      .setOutputCol("combinedFeatures")
 
     println("start parameter tuning")
 
+    val lr = new LogisticRegression().setMaxIter(10).setTol(1E-4).setPredictionCol("prediction")
+
+    val pipeline = new Pipeline()
+      .setStages(Array(hashingTF_bigrams, hashingTF_trigrams, idf_bigrams, idf_trigrams, assembler, lr))
+
+    val paramGrid = new ParamGridBuilder()
+      .addGrid(lr.featuresCol, Array("bigramFeatures", "trigramFeatures", "combinedFeatures"))
+      .addGrid(lr.elasticNetParam, Array(0.0, 0.3, 0.7, 1.0))
+      .addGrid(lr.regParam, Array(0.0, 0.01, 0.001))
+      .addGrid(lr.weightCol, Array("weight", ""))
+      .build()
+
+/*
+    val miniGrid = new ParamGridBuilder()
+      .addGrid(lr.featuresCol, Array("bigramFeatures", "trigramFeatures", "combinedFeatures"))
+      .build()
+*/
+
+    val cv = new MultiMetricCrossValidator()
+      .setEstimator(pipeline)
+      .setEvaluator(new MulticlassClassificationEvaluator().setMetricName("f1")
+        .setLabelCol("label").setPredictionCol("prediction"))
+      .setEstimatorParamMaps(paramGrid)
+      .setNumFolds(5)
+
+    val cvModel = cv.fit(training)
+    val results = cvModel.getEstimatorParamMaps.zip(cvModel.avgMetrics)
+    results.foreach(println(_))
+
+
+    val pw = new PrintWriter(new File("/home/kratzbaum/Dokumente/results_f1.txt" ))
+    results.foreach(s => pw.write(s.toString + "\n"))
+    pw.close
+
+    val best_model = cvModel.bestModel.asInstanceOf[PipelineModel]
+    best_model.save("/home/kratzbaum/Dokumente/best_model")
+
+    /*
     val lr = new LogisticRegression().setFeaturesCol("features")
       .setMaxIter(10).setTol(1E-4).setPredictionCol("prediction")
 
@@ -68,7 +114,7 @@ object LogRegClassifier {
 
     val paramGrid = new ParamGridBuilder()
       .addGrid(hashingTF.inputCol, Array("bigrams", "trigrams"))
-      .addGrid(lr.elasticNetParam, Array(0.3, 0.7, 1.0))
+      .addGrid(lr.elasticNetParam, Array(0.0, 0.3, 0.7, 1.0))
       .addGrid(lr.regParam, Array(0.0, 0.01, 0.001))
       .addGrid(lr.weightCol, Array("weight", ""))
       .build()
@@ -104,5 +150,6 @@ object LogRegClassifier {
 
     val best_model = cvModel.bestModel.asInstanceOf[PipelineModel]
     best_model.save("/home/kratzbaum/Dokumente/best_model")
+    */
   }
 }

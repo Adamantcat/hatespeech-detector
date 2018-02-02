@@ -4,10 +4,13 @@
 
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.ml.PipelineModel
+import org.apache.spark.ml.classification.LogisticRegressionModel
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature.StopWordsRemover
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.sql.SparkSession
+
+import scala.collection.Map
 
 object Evaluation {
 
@@ -28,6 +31,7 @@ object Evaluation {
     val best_model = PipelineModel.load("/home/kratzbaum/Dokumente/best_model")
 
     println("best Parameters: ")
+
     for (i <- 0 until best_model.stages.length) {
       println(best_model.stages(i).explainParams() + "\n")
     }
@@ -55,8 +59,8 @@ object Evaluation {
     //to use these, dataframe needs to be converted to rdd
     val predictionsAndLabels = predictions.select("prediction", "label")
       .map(r => new Tuple2[Double, Double](r.getDouble(0), r.getLong(1).toDouble)).rdd
-
     val metrics = new MulticlassMetrics(predictionsAndLabels)
+
     val falsePositives = metrics.weightedFalsePositiveRate
     println("Weighted false positive rate: " + falsePositives + "\n")
 

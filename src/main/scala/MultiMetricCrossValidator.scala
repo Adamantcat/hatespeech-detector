@@ -1,33 +1,36 @@
 /**
-  * Created by kratzbaum on 23.01.18.
-  */
+AUTHOR: Julia Koch
+PURPOSE: This modification of Spark CrossValidator is a workaround to print results
+for precision and recall during cross validation and save result to file
+License: Copyright [yyyy] Julia Koch
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+  */
 package org.apache.spark.ml.tuning
-import java.util.{List => JList}
+
 import java.io.PrintWriter
 import java.io.File
-import scala.collection.JavaConverters._
 import com.github.fommil.netlib.F2jBLAS
-import org.apache.hadoop.fs.Path
-import org.json4s.DefaultFormats
-import org.apache.spark.annotation.Since
-import org.apache.spark.internal.Logging
 import org.apache.spark.ml._
-import org.apache.spark.ml.evaluation.{Evaluator, MulticlassClassificationEvaluator}
-import org.apache.spark.ml.param._
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.util._
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.sql.{DataFrame, Dataset}
-import org.apache.spark.sql.types.StructType
-import org.apache.spark.ml.tuning.CrossValidatorModel
-import org.apache.spark.ml.tuning.CrossValidatorParams
 
 
 class MultiMetricCrossValidator extends org.apache.spark.ml.tuning.CrossValidator{
 
   private val f2jBLAS = new F2jBLAS
-
-   //def this() = this(Identifiable.randomUID("cv"))
 
   // @Since("2.0.0")
   override def fit(dataset: Dataset[_]): CrossValidatorModel = {
@@ -40,12 +43,12 @@ class MultiMetricCrossValidator extends org.apache.spark.ml.tuning.CrossValidato
     val numModels = epm.length
     val metrics = new Array[Double](epm.length)
 
-    //new shit
+    //modification: additional evluators
     val eval_p = new MulticlassClassificationEvaluator().setMetricName("weightedPrecision")
     val eval_r = new MulticlassClassificationEvaluator().setMetricName("weightedRecall")
     val precisions = new Array[Double](epm.length)
     val recalls = new Array[Double](epm.length)
-    //new shit end
+    //mod end
 
     val instr = Instrumentation.create(this, dataset)
     instr.logParams(numFolds, seed)
@@ -66,7 +69,7 @@ class MultiMetricCrossValidator extends org.apache.spark.ml.tuning.CrossValidato
         logWarning(s"Got metric $metric for model trained with ${epm(i)}.")
         metrics(i) += metric
 
-        //inserted shit here
+        //modification: evaluate precision and recall during cross validation
         val precision = eval_p.evaluate(models(i).transform(validationDataset, epm(i)))
         logWarning(s"Got precision $precision for model trained with ${epm(i)}.")
         val recall = eval_r.evaluate(models(i).transform(validationDataset, epm(i)))
@@ -75,7 +78,7 @@ class MultiMetricCrossValidator extends org.apache.spark.ml.tuning.CrossValidato
         precisions(i) += precision
         recalls(i) += recall
 
-        //back to normal code
+        //mod end
         i += 1
       }
       validationDataset.unpersist()
@@ -83,7 +86,7 @@ class MultiMetricCrossValidator extends org.apache.spark.ml.tuning.CrossValidato
     f2jBLAS.dscal(numModels, 1.0 / $(numFolds), metrics, 1)
     logWarning(s"Average cross-validation metrics: ${metrics.toSeq}")
 
-    //new shit
+    //modification: calculate average results for precision and recall and save them to files
     f2jBLAS.dscal(numModels, 1.0 / $(numFolds), precisions, 1)
     logWarning(s"Average cross-validation precision: ${precisions.toSeq}")
 
@@ -101,7 +104,7 @@ class MultiMetricCrossValidator extends org.apache.spark.ml.tuning.CrossValidato
     results_r.foreach(s => pw_r.write(s.toString + "\n"))
     pw_r.close
 
-    //end shit
+    //mod end
     val (bestMetric, bestIndex) =
       if (eval.isLargerBetter) metrics.zipWithIndex.maxBy(_._1)
       else metrics.zipWithIndex.minBy(_._1)

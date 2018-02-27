@@ -27,7 +27,7 @@ object Preprocess {
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
 
-    val data = "/home/kratzbaum/Dokumente/labeled_data.csv"
+    val data = "/home/mau/Documents/labeled_data.csv"
 
     val spark = SparkSession.builder.master("local[*]")
       .appName("Preprocess").getOrCreate()
@@ -110,7 +110,7 @@ object Preprocess {
     df = trigram.transform(df)
 
     //save as file
-    df.write.mode("overwrite").format("json").save("/home/kratzbaum/Dokumente/clean_data")
+    df.write.mode("overwrite").format("json").save("/home/mau/Documents/clean_data")
 
 
     //******************************************************************************

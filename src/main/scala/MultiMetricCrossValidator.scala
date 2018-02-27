@@ -93,11 +93,11 @@ class MultiMetricCrossValidator extends org.apache.spark.ml.tuning.CrossValidato
     val results_p = epm.zip(precisions)
     val results_r = epm.zip(recalls)
 
-    val pw_p = new PrintWriter(new File("/home/kratzbaum/Dokumente/results_precision.txt" ))
+    val pw_p = new PrintWriter(new File("/home/mau/Documents/results_precision.txt" ))
     results_p.foreach(s => pw_p.write(s.toString + "\n"))
     pw_p.close
 
-    val pw_r = new PrintWriter(new File("/home/kratzbaum/Dokumente/results_recalls.txt" ))
+    val pw_r = new PrintWriter(new File("/home/mau/Documents/results_recalls.txt" ))
     results_r.foreach(s => pw_r.write(s.toString + "\n"))
     pw_r.close
 

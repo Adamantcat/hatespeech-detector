@@ -23,12 +23,12 @@ object Evaluation {
     val spark = SparkSession.builder.master("local[*]")
       .appName("Evaluate").getOrCreate()
 
-    var test = spark.read.json("/home/kratzbaum/Dokumente/test")
+    var test = spark.read.json("/home/mau/Documents/test")
       .sort("id")
 
     import spark.implicits._
 
-    val best_model = PipelineModel.load("/home/kratzbaum/Dokumente/best_model")
+    val best_model = PipelineModel.load("/home/mau/Documents/best_model")
 
     println("best Parameters: ")
 

@@ -23,7 +23,7 @@ object LogRegClassifier {
     val spark = SparkSession.builder.master("local[*]")
       .appName("LogReg").getOrCreate()
 
-    var df = spark.read.json("/home/kratzbaum/Dokumente/clean_data")
+    var df = spark.read.json("/home/mau/Documents/clean_data")
       .sort("id")
 
     //df = df.withColumnRenamed("class", "label")
@@ -36,7 +36,7 @@ object LogRegClassifier {
     println(trainCounts)
 
     //save test data to file for later use
-   test.write.format("json").save("/home/kratzbaum/Dokumente/test")
+   test.write.format("json").save("/home/mau/Documents/test")
 
     //assign weights to underrepresented classes, similar effect to oversampling
     //pretend all classes are equally distributed
@@ -55,10 +55,10 @@ object LogRegClassifier {
 
     val idf = new IDF().setInputCol(hashingTF.getOutputCol).setOutputCol("ngram_features")
 
-    val hashingTF_bigrams = new HashingTF().setInputCol("bigrams").setOutputCol("bigramTF").setNumFeatures(100000)
+    val hashingTF_bigrams = new HashingTF().setInputCol("bigrams").setOutputCol("bigramTF")
     val idf_bigrams = new IDF().setInputCol("bigramTF").setOutputCol("bigramFeatures")
 
-    val hashingTF_trigrams = new HashingTF().setInputCol("trigrams").setOutputCol("trigramTF").setNumFeatures(100000)
+    val hashingTF_trigrams = new HashingTF().setInputCol("trigrams").setOutputCol("trigramTF")
     val idf_trigrams = new IDF().setInputCol("trigramTF").setOutputCol("trigramFeatures")
 
 
@@ -97,12 +97,12 @@ object LogRegClassifier {
     results.foreach(println(_))
 
 
-    val pw = new PrintWriter(new File("/home/kratzbaum/Dokumente/results_f1.txt" ))
+    val pw = new PrintWriter(new File("/home/mau/Documents/results_f1.txt"))
     results.foreach(s => pw.write(s.toString + "\n"))
     pw.close
 
     val best_model = cvModel.bestModel.asInstanceOf[PipelineModel]
-    best_model.save("/home/kratzbaum/Dokumente/best_model")
+    best_model.save("/home/mau/Documents/best_model")
 
     /*
     val lr = new LogisticRegression().setFeaturesCol("features")
